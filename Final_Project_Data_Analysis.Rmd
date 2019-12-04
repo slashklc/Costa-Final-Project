@@ -1,0 +1,400 @@
+---
+title: "Final Project Data Analysis"
+author: "Kristina Costa"
+date: "12/1/2019"
+output: pdf_document
+toc: true
+toc_depth: 3
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+```{r echo = FALSE}
+#requiring libraries for my data collection and manipulation first
+
+require(tidyverse)
+require(httr)
+require(lubridate)
+require(jsonlite)
+require(tidycensus) #A package to help with Census API pulls! 
+#here() starts at /Users/kristinacosta/Documents/Georgetown/
+#PPOL_670_Data_Science/Costa-Final-Project
+require(here)
+here("HazardMitigationAssistanceProjects.csv", "DisasterDeclarationsSummaries.csv")
+
+```
+
+### Tidying my Pre Disaster Mitigation Program data
+
+```{r}
+#Starting with my Hazard Mitigation Grant Program project level data, since Grant Outcome-County is going to be my unit of analysis
+
+dat_HMGP <- read.csv("HazardMitigationAssistanceProjects.csv")
+
+#Filtering out only Pre Disaster Mitigation Program activities
+#and assigning to a new object 
+dat_PDM <- filter(dat_HMGP, programArea == "PDM")
+
+#I only have PDMP data from FY 2000-2018, which will help me cut down my disaster declarations
+dat_PDM <- dat_PDM %>% 
+  arrange(., programFy) %>%  #arranging by fiscal year
+  select(stateNumberCode, state, countyCode, county, projectType, 
+         projectTitle, projectCounties, projectAmount, programFy) #keeping only variables I need 
+
+#Checking for missing values 
+dat_PDM %>% 
+  select(everything()) %>% 
+  summarise_all(funs(sum(is.na(.))))
+
+#I'm missing 1004 county codes, presumably because grants were given statewide. 7 state codes are also missing, 
+#and somehow so are 113 program FYs. If none of those overlap, then as many as 1124 of my 3789 observations are 
+#missing key information for my later analysis. 
+
+#FEMA is incredibly inconsistent in how it codes this data set. I'm going to drop entries 
+#for which the county FIPs code is missing for the time being, as well as entries for which
+#the county FIPs code is entered as a 0 because the grant was statewide. 
+
+dat_PDM <- dat_PDM %>% 
+  filter(countyCode > 0 & !is.na(countyCode)) %>% 
+  filter(!is.na(stateNumberCode)) %>% #Filtering out those 7 missing state FIPs codes too
+  filter(!is.na(programFy)) #I am also missing some Fiscal Year data, so removing those
+
+#I now have 2,642 observations.
+
+#My FEMA data sets don't have a single nice GEOID; the FIPS codes
+#(where they exist) are in different columns and don't have leading zeroes. So I am going to 
+#Start by trying to add leading zeroes to the disaster declaration data set, 
+#then will mutate a new GEOID column 
+
+dat_PDM <- dat_PDM %>% 
+  mutate(stateNumberCode = sprintf("%02d", stateNumberCode)) %>% 
+  mutate(countyCode = sprintf("%03d", countyCode)) %>% 
+  unite(GEOID, stateNumberCode, countyCode, sep="") #Uniting my mutated fipsCodes to one GEOID
+
+#I'm also going to separate the projectType code and projectType description into two columns
+#Just in case there is human error in how any of the descriptions are written
+
+dat_PDM <- dat_PDM %>% 
+  separate('projectType', into = c("projectType", "projectDescription"), sep = ":")
+
+#In 169 instances, FEMA coded at least 2 different projectType codes and descriptions into a single cell. 
+#My code above dropped them since R was only expecting 2 values and one : separator. 
+#Losing those data points takes a small amount of variation out of my data set, but it only affects .06 
+#percent of all observations so hopefully won't affect my analysis too much. 
+
+#I also need to add an indicator that the PDM counties are the "Yes" answers to what will ultimately be a categorization problem. 
+
+dat_PDM <- dat_PDM %>% 
+  add_column("Outcome" = "Grant")
+
+#Need to winnow down my variables again now that I have a better grasp on the data
+dat_PDM <- dat_PDM %>% 
+  select(GEOID, Outcome, projectType, projectDescription, projectAmount, programFy)
+
+```
+
+### Tidying my Disaster Declarations data 
+
+```{r}
+#Reading in disaster declaration summary data
+
+dat_FEMA <- read.csv("DisasterDeclarationsSummaries.csv")
+
+dat_FEMA <- dat_FEMA %>% 
+  filter(fyDeclared >= 2000) %>% #Filtering out only data since FY 2000 
+  arrange(fyDeclared) %>% #Arranging by year of disaster
+  filter(declarationType == 'DR') %>% #Filtering out only major disaster declarations
+  select(state, declarationType, fyDeclared, incidentType,
+         declarationTitle, fipsStateCode, fipsCountyCode,
+         designatedArea) #keeping only variables I need for now
+
+#Mutating the state and county FIPs codes into a uniform GEOID 
+
+dat_FEMA <- dat_FEMA %>% 
+  mutate(fipsStateCode = sprintf("%02d", fipsStateCode)) %>% 
+  mutate(fipsCountyCode = sprintf("%03d", fipsCountyCode)) %>% 
+  unite(GEOID, fipsStateCode, fipsCountyCode, sep="") #Uniting my mutated fipsCodes to one GEOID
+
+#reordering my columns, dropping now-unnecessary variables 
+dat_FEMA <- dat_FEMA %>% 
+  select(GEOID, state, designatedArea, fyDeclared, incidentType, declarationTitle, declarationType)
+
+#I care about the unit of analysis County-FEMA grant. That is, I want to analyze the characteristics of counties that have received FEMA grants. In my Disaster Declarations set, I have multiple instances for many GEOIDs, where they have had disaster declarations in multiple years for different disasters. While it would be perfectly interesting to analyze on the basis of disaster type, it would create a layer of complexity I'm just not ready for. So I'm going to count the instances of disaster declarations by GEOID, transmute to a new column, and then remove duplicate GEOIDs. 
+
+#I care about the unit of analysis County-FEMA grant. That is, I want to analyze the characteristics of counties that have received FEMA grants. So I need to drop instances from the other data sets that do not correspond to the GEOIDs of my Pre Disaster Mitigation data set. In my Disaster Declarations set, I have multiple instances for many GEOIDs, where they have had disaster declarations in multiple years for different disasters. While it would be perfectly interesting to analyze on the basis of disaster type, it would create a layer of complexity I'm just not ready for. So I'm going to count the instances of disaster declarations by GEOID, transmute to a new column, and then remove duplicate GEOIDs. 
+
+dat_FEMA_simple <- dat_FEMA %>% #creating a new object for my simplified data so I don't lose variation in case I change my mind later
+  add_count(GEOID, name="DisasterCount") %>% 
+  distinct(GEOID, DisasterCount, .keep_all = TRUE) %>% 
+  group_by(GEOID) %>% 
+  filter(row_number() == 1) %>% 
+  group_by(GEOID) %>% 
+  slice(1) %>%  #grouping by GEOID and taking first instance from each group
+  ungroup() %>% 
+  select(GEOID, DisasterCount, state) #Selecting just my simplified variables and state abbreviation, since the first declaration year, disaster type, etc in each GEOID group isn't meaningful 
+
+#There are 3,180 county-level observations in my simplified FEMA dataset.
+
+glimpse(dat_FEMA_simple)
+
+```
+
+### Acquiring and tidying my ACS data
+
+```{r}
+
+#Note: API slides avail here https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180614_API.pdf
+
+#Using the tidycensus package to pull ACS 5 year estimates for poverty rate 
+
+#Using the tidycensus package to pull ACS 5 year estimates for poverty rate 
+#Note: API slides avail here https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180614_API.pdf
+
+
+ACS_pov_dat <- get_acs(geography = "county", variables = "DP03_0119PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+
+#adjusting my ACS poverty data 
+ACS_pov_dat <- ACS_pov_dat %>% 
+
+  select(GEOID, NAME, POVERTY_RATE = estimate) #dropping columns for Census variable name and margin of error, 
+                                              #renaming 'estimate' column to reflect more useful variable name
+
+#Using the tidycensus package to pull ACS 5 year estimates for racial demographics as county percentages
+#I'm getting an error when I try to pull more than one variable, so will have to pull them individually
+#and then join the tables together once I tidy them up a bit
+
+ACS_white_dat <- get_acs(geography = "county", variables = "DP05_0037PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+ACS_black_dat <- get_acs(geography = "county", variables = "DP05_0038PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+ACS_native_dat <- get_acs(geography = "county", variables = "DP05_0039PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+ACS_asian_dat <- get_acs(geography = "county", variables = "DP05_0044PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+ACS_twoplus_dat <- get_acs(geography = "county", variables = "DP05_0058PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+ACS_hispanic_dat <- get_acs(geography = "county", variables = "DP05_0071PE", key = "4b641703e32072356c733cd79067e522979bc17d")
+
+#Adjusting my ACS racial data; in all cases, dropping columns for Census variable name and margin of error, 
+#renaming 'estimate' column to reflect more useful variable name
+ACS_white_dat <- ACS_white_dat %>% 
+  select(GEOID, NAME, PCT_WHITE = estimate)
+ACS_black_dat <- ACS_black_dat %>% 
+  select(GEOID, NAME, PCT_BLACK = estimate)
+ACS_native_dat <- ACS_native_dat %>% 
+  select(GEOID, NAME, PCT_NATIVE = estimate)
+ACS_asian_dat <- ACS_asian_dat %>% 
+  select(GEOID, NAME, PCT_ASIAN = estimate)
+ACS_twoplus_dat <- ACS_twoplus_dat %>% 
+  select(GEOID, NAME, PCT_TWO_OR_MORE = estimate)
+ACS_hispanic_dat <- ACS_hispanic_dat %>% 
+  select(GEOID, NAME, PCT_HISPANIC = estimate)
+
+#Now I want to join all my ACS data into one ACS data frame
+
+ACS_all_dat <- list(ACS_pov_dat, ACS_white_dat, ACS_black_dat, ACS_native_dat, ACS_asian_dat, ACS_twoplus_dat, ACS_hispanic_dat) %>%   
+  reduce(left_join, by = c("GEOID", "NAME"))
+
+#There are 3,220 county-level observations in my ACS data set
+glimpse(ACS_all_dat)
+
+```
+
+```{r}
+#Okay, I need to think about how to join my data sets together. 
+#My unit of analysis is ultimately going to be Grant Outcome-County. It basically becomes a classification problem: Does the county get a grant or not? (Right?) So I need to preserve ALL GEOIDs - there are 3,220 in the ACS County data (There are 3,142 counties and county equivalents in the 50 states and DC, and the ACS data also includes the 78 sub-territorial governmental units in Puerto Rico as county equivalents). 
+#Some of my Pre Disaster Mitigation Grant recieving counties have received multiple grants in different years. I don't just want to collapse them in a count the way I did for the Disaster Declaration data, because I would ultimately like to be able to show how much money has flowed to different geographies when I do some of my fancier plots. 
+#I'm not sure quite how to handle that at the moment, so I'm going to raise it as a problem in my presentation. 
+#For the time being, I will full_join my three data sets together by GEOID. I will then be able to add "NO_GRANT" where there are NAs for Outcome, so I will have two categories at last. 
+
+dat_PDM_FEMA_simple <- full_join(dat_PDM, dat_FEMA_simple, by="GEOID")
+#This join gives me 4,678 observations. As a reminder there were 3,180 observations in the disaster declaration data - so since 2000, nearly every county in the US has declared a disaster at least once. This higher observation total indicates to me that there are quite a few Pre Disaster Mitigation counties that have received more than one grant. Or, FEMA may use FIPS codes in some places that aren't part of the ACS data set. 
+
+dat_all <- full_join(dat_PDM_FEMA_simple, ACS_all_dat, by="GEOID")
+
+#This join somehow gives me 4,737 observations
+
+```
+
+```{r}
+#Before I split into training and test, I need to fill in my other Outcome variable for all non-PDM recipients. 
+
+dat_all <- dat_all %>% 
+  mutate_at(vars(Outcome), ~replace_na(., "No_Grant")) #Replacing the NAs with No_Grant as the other categorical outcome
+
+```
+
+### Training and Test Data Set 
+
+```{r}
+#Requiring additional libraries for my machine learning portion
+require(caret)
+require(recipes)
+require(ranger)
+require(rpart)
+```
+
+```{r}
+#Reordering my variables for my new data set for ease of use, then splitting into training and test data now that it's FINALLY TIDY
+
+dat_all <- dat_all %>% select(Outcome, GEOID, State = state, Name = NAME, 
+                   ProjectType = projectType, ProjectDescription = projectDescription, ProjectAmount = projectAmount,
+                   PDMProgramFY = programFy, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, 
+                   PCT_TWO_OR_MORE, PCT_HISPANIC)
+```
+
+```{r}
+#breaking into training and test data
+set.seed(1986) #setting a seed for replicability
+inTraining <- createDataPartition(dat_all$Outcome,
+                                  p = .75,
+                                  list = FALSE) #partioning my data 75 / 25
+
+training <- dat_all[inTraining,]
+testing <- dat_all[-inTraining,]
+
+#I now have 3,554 observations in my training dataset and 1,183 observations in my test dataset. 
+```
+
+### Exploratory statistics and visualizations
+
+<<<<<<< HEAD
+```{r, echo = FALSE}
+#loading packages related to data visualization
+require(ggplot2)
+require(ggthemes)
+require(scales)
+require(sf)
+require(tmap)
+```
+
+
+```{r}
+#Top level glance at the statistical distributions of my combined training data 
+summary(training)
+
+```
+
+```{r}
+#understanding the distribution of the financial amounts of Pre Disaster Mitigation projects awarded
+
+PDM_amountplot <- training %>% ggplot(., aes(ProjectAmount)) +
+  geom_histogram(fill = "steelblue", color = "white", bins = 100) +
+  labs(x = "Value of Grants Awarded",
+       y = "Number of Grants Awarded",
+       fill = "",
+       title = "Pre-Disaster Mitigation Grants Awarded",
+       subtitle = "FY 2000-2018") +
+  scale_x_continuous(limits = c(0, 1000000)) +
+  ggthemes::theme_tufte()
+
+#I have a huge amount of variation in the value of PDM grants awarded, from 0 (for technical assistance only)
+#to $35 million. The higher awards are such outliers, though, that representing them on the chart below
+#makes it basically useless, so limiting the visualization to $1 million to better illustrate the strong
+#right skew 
+PDM_amountplot
+```
+
+
+```{r}
+ggsave("PDM_amountplot.png", width = 7, height = 5)
+```
+
+
+```{r}
+#Comparing poverty rate distribution in counties that received grants
+#Vs counties that did not receive grants 
+
+Povertyrateplot <- training %>% 
+  ggplot(aes(x = POVERTY_RATE)) +
+  geom_histogram(aes(color = Outcome, fill = Outcome),
+                 alpha = 0.5, bins = 50) +
+  theme(legend.position = "bottom") +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  labs(x = "Poverty rate (%)",
+       y = "Number of Instances (County-Grant)",
+       title = "Poverty rate among Pre-Disaster Mitigation grant and non-grant counties")
+
+  
+Povertyrateplot
+
+
+```
+
+
+```{r}
+#Saving the plot as a .png
+ggsave("Povertyrateplot.png", width = 7, height = 5)
+```
+
+
+
+```{r}
+#Comparing number of counties by state that received
+#Vs counties that did not receive grants 
+
+Statedistroplot <- training %>% 
+  ggplot(aes(x = State)) +
+  geom_histogram(aes(color = Outcome, fill = Outcome),
+                 alpha = 0.5, stat = "count") +
+  theme(axis.text.x = element_text(angle = 90)) +
+  theme(panel.grid.major = element_blank(), panel.grid.minor = element_blank()) +
+  theme(legend.position = "bottom") +
+    labs(x = "",
+       y = "Number of Instances: Grant / No Grant",
+       title = "Distribution of Grant / No-Grant County-Instances by State") 
+  
+  
+Statedistroplot
+```
+
+```{r}
+ggsave("Statedistroplot.png", width = 7, height = 5)
+```
+
+### My Albatross: Mapping 
+
+```{r}
+#Let's try to make a map of poverty rates in counties where grants have been awarded 
+
+#I only care about where grants have been awarded, so filtering out my No_Grant data and everything but GEOID
+
+PDM_map_dat <- training %>% 
+  filter(., Outcome == "Grant") %>% 
+  select(GEOID)
+
+```
+
+```{r}
+
+#Getting spatial data from Census for poverty data set 
+
+ACS_pov_map <- get_acs(geography = "county", variables = "DP03_0119PE", 
+                       output = "tidy", geometry = TRUE,
+                       shift_geo = TRUE, key = "4b641703e32072356c733cd79067e522979bc17d") %>% 
+  select(GEOID, Name = NAME, PovertyRate = estimate, geometry) #renaming and dropping unneeded variables 
+
+```
+
+```{r}
+
+#Joining my ACS poverty with geography data to my PDM map data; I only want to keep 
+#rows that match on GEOID so I am using an inner_join
+
+PDM_map_dat <- inner_join(PDM_map_dat, ACS_pov_map, by = "GEOID")
+
+```
+
+
+```{r}
+
+PDM_pov_mapplot <- 
+  ggplot(data = PDM_map_dat) +
+  geom_sf(data = PDM_map_dat, 
+          aes(fill = PovertyRate)) +
+  coord_sf(26912, datum = NA) +
+  scale_fill_viridis_c(option = "magma")
+
+PDM_pov_mapplot
+  
+  
+```
+
