@@ -124,8 +124,6 @@ dat_FEMA <- dat_FEMA %>%
 
 #I care about the unit of analysis County-FEMA grant. That is, I want to analyze the characteristics of counties that have received FEMA grants. In my Disaster Declarations set, I have multiple instances for many GEOIDs, where they have had disaster declarations in multiple years for different disasters. While it would be perfectly interesting to analyze on the basis of disaster type, it would create a layer of complexity I'm just not ready for. So I'm going to count the instances of disaster declarations by GEOID, transmute to a new column, and then remove duplicate GEOIDs. 
 
-#I care about the unit of analysis County-FEMA grant. That is, I want to analyze the characteristics of counties that have received FEMA grants. So I need to drop instances from the other data sets that do not correspond to the GEOIDs of my Pre Disaster Mitigation data set. In my Disaster Declarations set, I have multiple instances for many GEOIDs, where they have had disaster declarations in multiple years for different disasters. While it would be perfectly interesting to analyze on the basis of disaster type, it would create a layer of complexity I'm just not ready for. So I'm going to count the instances of disaster declarations by GEOID, transmute to a new column, and then remove duplicate GEOIDs. 
-
 dat_FEMA_simple <- dat_FEMA %>% #creating a new object for my simplified data so I don't lose variation in case I change my mind later
   add_count(GEOID, name="DisasterCount") %>% 
   distinct(GEOID, DisasterCount, .keep_all = TRUE) %>% 
@@ -138,17 +136,11 @@ dat_FEMA_simple <- dat_FEMA %>% #creating a new object for my simplified data so
 
 #There are 3,180 county-level observations in my simplified FEMA dataset.
 
-glimpse(dat_FEMA_simple)
-
 ```
 
 ### Acquiring and tidying my ACS data
 
 ```{r}
-
-#Note: API slides avail here https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180614_API.pdf
-
-#Using the tidycensus package to pull ACS 5 year estimates for poverty rate 
 
 #Using the tidycensus package to pull ACS 5 year estimates for poverty rate 
 #Note: API slides avail here https://www.census.gov/content/dam/Census/programs-surveys/acs/guidance/training-presentations/20180614_API.pdf
@@ -163,7 +155,7 @@ ACS_pov_dat <- ACS_pov_dat %>%
                                               #renaming 'estimate' column to reflect more useful variable name
 
 #Using the tidycensus package to pull ACS 5 year estimates for racial demographics as county percentages
-#I'm getting an error when I try to pull more than one variable, so will have to pull them individually
+#I'm getting an error when I try to pull more than one variable, so will pull them individually
 #and then join the tables together once I tidy them up a bit
 
 ACS_white_dat <- get_acs(geography = "county", variables = "DP05_0037PE", key = "4b641703e32072356c733cd79067e522979bc17d")
@@ -194,19 +186,17 @@ ACS_all_dat <- list(ACS_pov_dat, ACS_white_dat, ACS_black_dat, ACS_native_dat, A
   reduce(left_join, by = c("GEOID", "NAME"))
 
 #There are 3,220 county-level observations in my ACS data set
-glimpse(ACS_all_dat)
 
 ```
 
 ```{r}
 #Okay, I need to think about how to join my data sets together. 
-#My unit of analysis is ultimately going to be Grant Outcome-County. It basically becomes a classification problem: Does the county get a grant or not? (Right?) So I need to preserve ALL GEOIDs - there are 3,220 in the ACS County data (There are 3,142 counties and county equivalents in the 50 states and DC, and the ACS data also includes the 78 sub-territorial governmental units in Puerto Rico as county equivalents). 
+#My unit of analysis is ultimately going to be Grant Outcome-County. It basically becomes a classification problem: Does the county get a grant or not? So I need to preserve ALL GEOIDs - there are 3,220 in the ACS County data (There are 3,142 counties and county equivalents in the 50 states and DC, and the ACS data also includes the 78 sub-territorial governmental units in Puerto Rico as county equivalents). 
 #Some of my Pre Disaster Mitigation Grant recieving counties have received multiple grants in different years. I don't just want to collapse them in a count the way I did for the Disaster Declaration data, because I would ultimately like to be able to show how much money has flowed to different geographies when I do some of my fancier plots. 
-#I'm not sure quite how to handle that at the moment, so I'm going to raise it as a problem in my presentation. 
 #For the time being, I will full_join my three data sets together by GEOID. I will then be able to add "NO_GRANT" where there are NAs for Outcome, so I will have two categories at last. 
 
 dat_PDM_FEMA_simple <- full_join(dat_PDM, dat_FEMA_simple, by="GEOID")
-#This join gives me 4,678 observations. As a reminder there were 3,180 observations in the disaster declaration data - so since 2000, nearly every county in the US has declared a disaster at least once. This higher observation total indicates to me that there are quite a few Pre Disaster Mitigation counties that have received more than one grant. Or, FEMA may use FIPS codes in some places that aren't part of the ACS data set. 
+#This join gives me 4,678 observations. As a reminder there were 3,180 observations in the disaster declaration data - so since 2000, nearly every county in the US has declared a disaster at least once. This higher observation total indicates to me that there are quite a few Pre Disaster Mitigation counties that have received more than one grant. Also, FEMA uses FIPS codes in some places that aren't part of the ACS data set (like tribal areas). 
 
 dat_all <- full_join(dat_PDM_FEMA_simple, ACS_all_dat, by="GEOID")
 
@@ -256,22 +246,45 @@ testing <- dat_all[-inTraining,]
 
 ### Exploratory statistics and visualizations
 
-<<<<<<< HEAD
 ```{r, echo = FALSE}
 #loading packages related to data visualization
 require(ggplot2)
 require(ggthemes)
 require(scales)
-require(sf)
-require(tmap)
+require(sf) #for geographic maps
+require(tmap) #for geographic maps 
 ```
-
 
 ```{r}
 #Top level glance at the statistical distributions of my combined training data 
 summary(training)
 
 ```
+
+```{r}
+#Looking at underlying relationships in training data 
+
+sigma <- training %>% 
+  select_if(is.numeric) %>% 
+  na.omit(.) %>% 
+  cor(.)
+
+ggcorrplot::ggcorrplot(sigma, hc.order = TRUE, outline.color = "white", tl.cex = 5)
+```
+
+```{r}
+#Seeing if there are meaningful clusters of numeric variables
+
+D <- training %>% 
+  select_if(is.numeric) %>% 
+  na.omit(.) 
+clusters = hclust(dist(D), method = "complete")
+
+pca_D <- FactoMineR::PCA(D, graph = F, scale.unit = T)
+factoextra::fviz_eig(pca_D, addlabels = T,)
+```
+
+
 
 ```{r}
 #understanding the distribution of the financial amounts of Pre Disaster Mitigation projects awarded
@@ -295,6 +308,7 @@ PDM_amountplot
 
 
 ```{r}
+#Saving the grant amount plot as a .png for my presentation
 ggsave("PDM_amountplot.png", width = 7, height = 5)
 ```
 
@@ -321,11 +335,9 @@ Povertyrateplot
 
 
 ```{r}
-#Saving the plot as a .png
+#Saving the plot as a .png for my presentation
 ggsave("Povertyrateplot.png", width = 7, height = 5)
 ```
-
-
 
 ```{r}
 #Comparing number of counties by state that received
@@ -347,8 +359,495 @@ Statedistroplot
 ```
 
 ```{r}
+#Saving my grants by state distro as a .png for my presentation 
 ggsave("Statedistroplot.png", width = 7, height = 5)
 ```
+
+### Machine learning 
+
+```{r}
+#Looking at my outcome distributions 
+training %>% 
+  select(Outcome) %>% 
+  gather(var, val) %>% 
+  ggplot(aes(val)) + 
+  geom_bar() +
+  scale_y_log10() +
+  facet_wrap(~var, scales = "free", ncol = 3) + 
+  coord_flip()
+
+#I have a good balance on the outcome 
+
+```
+
+```{r}
+#Looking at my racial distributions 
+training %>% 
+  select(PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  gather(var, val) %>% 
+  ggplot(aes(val)) + 
+  geom_histogram(bins = 40) +
+  scale_y_log10() +
+  facet_wrap(~var, scales = "free", ncol = 3) + 
+  coord_flip()
+
+#I have a small number of missing values I'll need to impute. There also appear to be some ranges of racial representation that aren't present in the data. 
+```
+
+```{r}
+summary(training)
+```
+
+```{r}
+#I have NAs in the data which need to be treated differently... I want to use KNN impute for missing ACS derived data, but for disaster count, NA should be 0. There isn't really a way to impute the missing states, so I'm inclined to not use state as a predictor (which makes some sense since I care about the characteristics of counties anyway). I'm obviously also missing PDMProgramFY data for any county that doesn't have a grant, so that could create a perfect prediction problem -- so I will also drop the FY from my predictor set. 
+#For this initial set of models, I don't care about the amount of the grant -- so going to drop that variable, and the project descriptions too
+
+training_mod <- training %>% 
+  select(Outcome, GEOID, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
+
+
+```
+
+```{r}
+#Applying changes to my testing data set too 
+
+testing_mod <- testing %>% 
+  select(Outcome, GEOID, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
+
+```
+
+```{r}
+#Setting up my recipe such that the outcome is grant outcome 
+rcp <- 
+  recipe(Outcome ~ ., training_mod) %>% 
+  step_medianimpute(all_numeric()) %>%  #imputing any missing values for ACS-derived data 
+  step_range(all_numeric()) %>% #normalizing my scale. 
+  prep()
+
+```
+
+```{r}
+#applying the recipe to both my training and testing data sets 
+training_mod2 <- bake(rcp, training_mod)
+testing_mod2 <- bake(rcp, testing_mod)
+
+```
+
+```{r}
+#Setting up cross-validation
+
+set.seed(1986) #setting my seed for replication
+folds <- createFolds(training_mod2$Outcome, k = 5)
+sapply(folds, length)
+```
+
+```{r}
+#Setting up my control conditions 
+
+control_conditions <- 
+  trainControl(method = 'cv', #K-fold cross validation
+               summaryFunction = twoClassSummary, #classification problem
+               classProbs = TRUE, #classification problem
+               index = folds) #indices for folds
+
+```
+
+```{r}
+#Running a logistic regression model
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+mod_logit <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "glm", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_logit
+
+```
+
+```{r}
+#Running a KNN model
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+mod_knn <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "knn", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_knn
+```
+
+```{r}
+plot(mod_knn)
+#The improvements are on a straight line so I haven't yet found my best performing KNN model... so I'm going to expand my tuning parameters 
+```
+
+```{r}
+#Setting new tuning parameters
+knn_tune <- expand.grid(k = c(1,3,10,20,30,40,50))
+
+#running a second KNN model
+
+mod_knn2 <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "knn", 
+                   metric = "ROC",
+                   tuneGrid = knn_tune, #adding the tuning parameters 
+                   trControl = control_conditions) 
+
+mod_knn2
+```
+
+```{r}
+plot(mod_knn2)
+#20 folds is my best performing model 
+```
+
+```{r}
+#Running a CART model 
+
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+mod_cart <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "rpart", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_cart
+```
+
+```{r}
+plot(mod_cart)
+```
+
+```{r}
+rattle::fancyRpartPlot(mod_cart$finalModel)
+
+#Interestingly the tree initially splits on the PCT_ASIAN variable. 
+
+```
+
+```{r}
+#setting tuning parameters to let the tree grow deeper
+tune_cart2 <- expand.grid(cp = c(0.0061347)) #complexity parameter
+
+#Running a second CART model
+
+mod_cart2 <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "rpart", 
+                   metric = "ROC",
+                   tuneGrid = tune_cart2, #tuning parameters
+                   trControl = control_conditions) 
+
+mod_cart2
+
+
+```
+
+```{r}
+rattle::fancyRpartPlot(mod_cart2$finalModel)
+```
+
+```{r}
+#Running a random forest model 
+
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+mod_rf <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "ranger", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_rf
+
+
+```
+
+```{r}
+plot(mod_rf)
+```
+
+```{r}
+#Trying out some support vector machine models too, just for fun. 
+#Linear boundary 
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+
+library(kernlab)
+mod_svm_linear <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "svmLinear", 
+                   metric = "ROC",
+                   tuneGrid = expand.grid(C = c(.5, 1)), #adding tuning parameters
+                   trControl = control_conditions) 
+
+mod_svm_linear
+
+
+```
+
+```{r}
+#Polynomial boundary 
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+
+mod_svm_poly <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "svmPoly", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_svm_poly
+
+```
+
+```{r}
+#Radial boundary
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only
+
+mod_svm_radial <- train(Outcome ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = training_mod2,
+                   method = "svmRadial", 
+                   metric = "ROC",
+                   trControl = control_conditions) 
+
+mod_svm_radial
+
+
+```
+
+### Model comparison
+
+```{r}
+#organizing model outcomes as a list
+
+mod_list <- list(logit = mod_logit, 
+                 knn1 = mod_knn, 
+                 knn2 = mod_knn2, 
+                 cart1 = mod_cart, 
+                 cart2 = mod_cart2, 
+                 rf = mod_rf, 
+                 svm_linear = mod_svm_linear, 
+                 svm_poly = mod_svm_poly, 
+                 svm_radial = mod_svm_radial)
+
+#Generating a plot to compare output
+
+dotplot(resamples(mod_list))
+```
+
+### Examining predictive power of variables in RF model
+
+```{r}
+require(vip) #requiring VIP package 
+```
+
+```{r}
+pred_wrapper <- function(object, newdata){
+  #creating wrapper function so vip can calculate a prediction
+  predict(object, data = newdata, type = "response")$predictions[,"Grant"]
+}
+
+#Creating a variable importance plot
+permute_imp_plot <- 
+  vip(mod_rf$finalModel,
+      data = training_mod2,
+      target = training_mod2$Outcome,
+      train = training_mod2 %>% select(-Outcome),
+      reference_class = "Grant",
+      method = "permute",
+      pred_wrapper = pred_wrapper)
+  
+permute_imp_plot
+```
+
+### Testing data on RF model 
+
+```{r}
+#looking at the predictive performance of the RF model 
+
+pred <- predict(mod_rf, newdata = testing_mod2)
+confusionMatrix(table(pred, testing_mod2$Outcome))
+
+```
+
+###Machine learning 2: Splitting my outcomes
+
+```{r}
+#I'm curious if there's any difference between the characteristics of counties receiving small grants (<$100,000) and those receiving larger grants (up to $32 million). 
+
+#Of course, in some instances counties have received multiple grants... so I think I'm going to sum a total grant amount by county before doing this analysis.
+
+#Starting once again with my full data set
+
+dat_all_split <- dat_all %>% 
+  group_by(GEOID, Outcome, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  summarise_at(vars(ProjectAmount), funs(sum)) %>% #Summarizing the ProjectAmount variable for each county
+  ungroup()
+```
+
+```{r}
+#I have a different outcome this time... I want to know whether a county is going to sort into the high grant category (>$100,000) or the low grant category (<$100,000). So I need to mutate a new outcome column. 
+
+dat_all_split <- dat_all_split %>% 
+  mutate(grant_level = ifelse(ProjectAmount > 100000, "high", "low"))
+
+```
+
+```{r}
+#I only care about counties that received grants, so I can filter out only those counties
+
+dat_all_split <- dat_all_split %>% 
+  filter(Outcome == "Grant")
+
+```
+
+```{r}
+#Reordering and renaming my columns
+
+dat_all_split <- dat_all_split %>% 
+  select(GEOID, GrantLevel = grant_level, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC)
+
+```
+
+```{r}
+#breaking into training and test data
+set.seed(1986) #setting a seed for replicability
+inTrainingGrant <- createDataPartition(dat_all_split$GrantLevel,
+                                  p = .75,
+                                  list = FALSE) #partioning my data 75 / 25
+
+trainingGrant <- dat_all_split[inTrainingGrant,]
+testingGrant <- dat_all_split[-inTrainingGrant,]
+
+
+```
+
+```{r}
+summary(trainingGrant)
+#I still have missing values even only looking at successful grants, so going to need to impute those again using the same methods as previously 
+```
+
+```{r}
+#Changing disaster count NAs to 0s in the training data 
+trainingGrant <- trainingGrant %>% 
+  select(GEOID, GrantLevel, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
+```
+
+```{r}
+#Changing disaster count NAs to 0s in the testing data
+testingGrant <- testingGrant %>% 
+  select(GEOID, GrantLevel, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
+```
+
+```{r}
+#Setting up my recipe such that the outcome is grant level
+rcpGrant <- 
+  recipe(GrantLevel ~ ., trainingGrant) %>% 
+  step_medianimpute(all_numeric()) %>%  #imputing any missing values for ACS-derived data 
+  step_range(all_numeric()) %>% #normalizing my scale. 
+  prep()
+
+```
+
+```{r}
+#applying the recipe to both my training and testing data sets 
+trainingGrant_mod <- bake(rcpGrant, trainingGrant)
+testingGrant_mod <- bake(rcpGrant, testingGrant)
+
+```
+
+```{r}
+#Setting up cross-validation
+
+set.seed(1986) #setting my seed for replication
+foldsGrant <- createFolds(trainingGrant_mod$GrantLevel, k = 5)
+sapply(foldsGrant, length)
+```
+
+```{r}
+#Setting up my control conditions 
+
+control_conditions_Grant <- 
+  trainControl(method = 'cv', #K-fold cross validation
+               summaryFunction = twoClassSummary, #classification problem
+               classProbs = TRUE, #classification problem
+               index = foldsGrant) #indices for folds
+
+```
+
+```{r}
+#I'm just running a Random Forest this time because I want to see what the most influential variables are when it comes to grant amount 
+
+#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
+#so selecting the other predictors only; also don't want to use ProjectAmount
+mod_rf_grant <- train(GrantLevel ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
+                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+                   data = trainingGrant_mod,
+                   method = "ranger", 
+                   metric = "ROC",
+                   trControl = control_conditions_Grant) 
+
+mod_rf_grant
+```
+
+```{r}
+pred_wrapper_high <- function(object, newdata){
+  #creating wrapper function so vip can calculate a prediction
+  predict(object, data = newdata, type = "response")$predictions[,"high"]
+}
+
+#Creating a variable importance plot
+permute_imp_plot_high <- 
+  vip(mod_rf_grant$finalModel,
+      data = trainingGrant_mod,
+      target = trainingGrant_mod$GrantLevel,
+      train = trainingGrant_mod %>% select(-GrantLevel),
+      reference_class = "high",
+      method = "permute",
+      pred_wrapper = pred_wrapper_high)
+  
+permute_imp_plot_high
+
+
+pred_wrapper <- function(object, newdata){
+  #creating wrapper function so vip can calculate a prediction
+  predict(object, data = newdata, type = "response")$predictions[,"Grant"]
+}
+
+#Creating a variable importance plot
+permute_imp_plot <- 
+  vip(mod_rf$finalModel,
+      data = training_mod2,
+      target = training_mod2$Outcome,
+      train = training_mod2 %>% select(-Outcome),
+      reference_class = "Grant",
+      method = "permute",
+      pred_wrapper = pred_wrapper)
+  
+permute_imp_plot
+```
+
+
 
 ### My Albatross: Mapping 
 
@@ -359,23 +858,29 @@ ggsave("Statedistroplot.png", width = 7, height = 5)
 
 PDM_map_dat <- training %>% 
   filter(., Outcome == "Grant") %>% 
-  select(GEOID)
+  select(GEOID, State) %>% 
+  filter(!is.na(State)) %>% 
+  filter(!str_detect(State, "AS")) %>%  #removing territories that don't appear in the rNaturalEarth US map
+  filter(!str_detect(State, "GU")) %>% 
+  filter(!str_detect(State, "TM")) %>% 
+  filter(!str_detect(State, "MP")) %>% 
+  filter(!str_detect(State, "VI")) %>% 
+  filter(!str_detect(State, "PR")) %>% 
+  distinct() #removing duplicate counties (have received more than 1 grant)
 
 ```
 
 ```{r}
-
 #Getting spatial data from Census for poverty data set 
 
 ACS_pov_map <- get_acs(geography = "county", variables = "DP03_0119PE", 
                        output = "tidy", geometry = TRUE,
                        shift_geo = TRUE, key = "4b641703e32072356c733cd79067e522979bc17d") %>% 
-  select(GEOID, Name = NAME, PovertyRate = estimate, geometry) #renaming and dropping unneeded variables 
+  select(GEOID, PovertyRate = estimate, geometry) #renaming and dropping unneeded variables 
 
 ```
 
 ```{r}
-
 #Joining my ACS poverty with geography data to my PDM map data; I only want to keep 
 #rows that match on GEOID so I am using an inner_join
 
@@ -385,16 +890,51 @@ PDM_map_dat <- inner_join(PDM_map_dat, ACS_pov_map, by = "GEOID")
 
 
 ```{r}
+#Calling shapefile from rnaturalearth package
 
-PDM_pov_mapplot <- 
-  ggplot(data = PDM_map_dat) +
-  geom_sf(data = PDM_map_dat, 
-          aes(fill = PovertyRate)) +
-  coord_sf(26912, datum = NA) +
-  scale_fill_viridis_c(option = "magma")
+require(rnaturalearth)
+require(rnaturalearthdata)
+require(rnaturalearthhires)
 
-PDM_pov_mapplot
-  
-  
+states_shp <- ne_states(returnclass = "sf",
+                        country = "United States of America") %>% 
+  filter(name != "Alaska" & name != "Hawaii") #dropping AK and HI for initial map
+
+#Set up continental US projection
+
+us.proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0=0 +ellps=GRS80 +datum=NAD83 +units=m +no_defs"
+
+```
+
+```{r}
+#Making the map with fixed width bins 
+
+poverty_map <- tm_shape(PDM_map_dat,
+                     projection = us.proj) +
+  tm_fill("PovertyRate",
+          palette = "PuBuGn",
+          title = "Poverty Rate") + 
+  tm_shape(states_shp,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Poverty Rate in Counties Receiving Pre-Disaster Mitigation Grants",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+```
+
+
+```{r}
+#Saving the map
+
+tmap_save(poverty_map, "poverty_rate_PDM_counties_map.png", width = 1920, height = 1080, asp = 0)
+
 ```
 
