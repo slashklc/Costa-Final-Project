@@ -220,18 +220,14 @@ require(caret)
 require(recipes)
 require(ranger)
 require(rpart)
-```
 
-```{r}
 #Reordering my variables for my new data set for ease of use, then splitting into training and test data now that it's FINALLY TIDY
 
 dat_all <- dat_all %>% select(Outcome, GEOID, State = state, Name = NAME, 
                    ProjectType = projectType, ProjectDescription = projectDescription, ProjectAmount = projectAmount,
                    PDMProgramFY = programFy, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, 
                    PCT_TWO_OR_MORE, PCT_HISPANIC)
-```
 
-```{r}
 #breaking into training and test data
 set.seed(1986) #setting a seed for replicability
 inTraining <- createDataPartition(dat_all$Outcome,
@@ -242,6 +238,7 @@ training <- dat_all[inTraining,]
 testing <- dat_all[-inTraining,]
 
 #I now have 3,554 observations in my training dataset and 1,183 observations in my test dataset. 
+
 ```
 
 ### Exploratory statistics and visualizations
@@ -253,15 +250,11 @@ require(ggthemes)
 require(scales)
 require(sf) #for geographic maps
 require(tmap) #for geographic maps 
-```
+require(rColorBrewer) #for nice color palettes 
 
-```{r}
 #Top level glance at the statistical distributions of my combined training data 
 summary(training)
 
-```
-
-```{r}
 #Looking at underlying relationships in training data 
 
 sigma <- training %>% 
@@ -270,9 +263,7 @@ sigma <- training %>%
   cor(.)
 
 ggcorrplot::ggcorrplot(sigma, hc.order = TRUE, outline.color = "white", tl.cex = 5)
-```
 
-```{r}
 #Seeing if there are meaningful clusters of numeric variables
 
 D <- training %>% 
@@ -282,9 +273,8 @@ clusters = hclust(dist(D), method = "complete")
 
 pca_D <- FactoMineR::PCA(D, graph = F, scale.unit = T)
 factoextra::fviz_eig(pca_D, addlabels = T,)
+
 ```
-
-
 
 ```{r}
 #understanding the distribution of the financial amounts of Pre Disaster Mitigation projects awarded
@@ -399,26 +389,19 @@ summary(training)
 ```
 
 ```{r}
-#I have NAs in the data which need to be treated differently... I want to use KNN impute for missing ACS derived data, but for disaster count, NA should be 0. There isn't really a way to impute the missing states, so I'm inclined to not use state as a predictor (which makes some sense since I care about the characteristics of counties anyway). I'm obviously also missing PDMProgramFY data for any county that doesn't have a grant, so that could create a perfect prediction problem -- so I will also drop the FY from my predictor set. 
+#I have NAs in the data which need to be treated differently... I want to impute missing ACS derived data, but for disaster count, NA should be 0. There isn't really a way to impute the missing states, so I'm inclined to not use state as a predictor (which makes some sense since I care about the characteristics of counties anyway). I'm obviously also missing PDMProgramFY data for any county that doesn't have a grant, so that could create a perfect prediction problem -- so I will also drop the FY from my predictor set. 
 #For this initial set of models, I don't care about the amount of the grant -- so going to drop that variable, and the project descriptions too
 
 training_mod <- training %>% 
   select(Outcome, GEOID, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
   mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
 
-
-```
-
-```{r}
 #Applying changes to my testing data set too 
 
 testing_mod <- testing %>% 
   select(Outcome, GEOID, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
   mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
 
-```
-
-```{r}
 #Setting up my recipe such that the outcome is grant outcome 
 rcp <- 
   recipe(Outcome ~ ., training_mod) %>% 
@@ -426,24 +409,16 @@ rcp <-
   step_range(all_numeric()) %>% #normalizing my scale. 
   prep()
 
-```
-
-```{r}
 #applying the recipe to both my training and testing data sets 
 training_mod2 <- bake(rcp, training_mod)
 testing_mod2 <- bake(rcp, testing_mod)
 
-```
-
-```{r}
 #Setting up cross-validation
 
 set.seed(1986) #setting my seed for replication
 folds <- createFolds(training_mod2$Outcome, k = 5)
 sapply(folds, length)
-```
 
-```{r}
 #Setting up my control conditions 
 
 control_conditions <- 
@@ -688,10 +663,10 @@ confusionMatrix(table(pred, testing_mod2$Outcome))
 
 ```
 
-###Machine learning 2: Splitting my outcomes
+###Machine learning 2: Differences by grant amount
 
 ```{r}
-#I'm curious if there's any difference between the characteristics of counties receiving small grants (<$100,000) and those receiving larger grants (up to $32 million). 
+#I'm curious if there's any difference between the characteristics of counties receiving small grants (<$75,000) and those receiving larger grants (up to $50 million). 
 
 #Of course, in some instances counties have received multiple grants... so I think I'm going to sum a total grant amount by county before doing this analysis.
 
@@ -699,7 +674,7 @@ confusionMatrix(table(pred, testing_mod2$Outcome))
 
 dat_all_split <- dat_all %>% 
   group_by(GEOID, Outcome, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
-  summarise_at(vars(ProjectAmount), funs(sum)) %>% #Summarizing the ProjectAmount variable for each county
+  summarise_at(vars(projectAmount), funs(sum)) %>% #Summarizing the ProjectAmount variable for each county
   ungroup()
 ```
 
@@ -707,7 +682,7 @@ dat_all_split <- dat_all %>%
 #I have a different outcome this time... I want to know whether a county is going to sort into the high grant category (>$100,000) or the low grant category (<$100,000). So I need to mutate a new outcome column. 
 
 dat_all_split <- dat_all_split %>% 
-  mutate(grant_level = ifelse(ProjectAmount > 100000, "high", "low"))
+  mutate(grant_level = ifelse(projectAmount > 75000, "high", "low"))
 
 ```
 
@@ -723,7 +698,7 @@ dat_all_split <- dat_all_split %>%
 #Reordering and renaming my columns
 
 dat_all_split <- dat_all_split %>% 
-  select(GEOID, GrantLevel = grant_level, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC)
+  select(GEOID, GrantLevel = grant_level, projectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC)
 
 ```
 
@@ -748,14 +723,15 @@ summary(trainingGrant)
 ```{r}
 #Changing disaster count NAs to 0s in the training data 
 trainingGrant <- trainingGrant %>% 
-  select(GEOID, GrantLevel, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  #I'm also dropping the projectAmount variable at this point to avoid perfect prediction
+  select(GrantLevel, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
   mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
 ```
 
 ```{r}
 #Changing disaster count NAs to 0s in the testing data
 testingGrant <- testingGrant %>% 
-  select(GEOID, GrantLevel, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
+  select(GrantLevel, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
   mutate_at(., vars(DisasterCount), funs(ifelse(is.na(.), 0, .)))
 ```
 
@@ -798,10 +774,8 @@ control_conditions_Grant <-
 ```{r}
 #I'm just running a Random Forest this time because I want to see what the most influential variables are when it comes to grant amount 
 
-#I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
-#so selecting the other predictors only; also don't want to use ProjectAmount
-mod_rf_grant <- train(GrantLevel ~ DisasterCount + POVERTY_RATE + PCT_WHITE + 
-                             PCT_BLACK + PCT_NATIVE + PCT_ASIAN + PCT_TWO_OR_MORE + PCT_HISPANIC,
+#I dropped GEOID and ProjectAmount as predictors, so can use all my remaining variables
+mod_rf_grant <- train(GrantLevel ~ .,
                    data = trainingGrant_mod,
                    method = "ranger", 
                    metric = "ROC",
@@ -816,6 +790,10 @@ pred_wrapper_high <- function(object, newdata){
   predict(object, data = newdata, type = "response")$predictions[,"high"]
 }
 
+
+```
+
+```{r}
 #Creating a variable importance plot
 permute_imp_plot_high <- 
   vip(mod_rf_grant$finalModel,
@@ -825,29 +803,14 @@ permute_imp_plot_high <-
       reference_class = "high",
       method = "permute",
       pred_wrapper = pred_wrapper_high)
-  
+
 permute_imp_plot_high
-
-
-pred_wrapper <- function(object, newdata){
-  #creating wrapper function so vip can calculate a prediction
-  predict(object, data = newdata, type = "response")$predictions[,"Grant"]
-}
-
-#Creating a variable importance plot
-permute_imp_plot <- 
-  vip(mod_rf$finalModel,
-      data = training_mod2,
-      target = training_mod2$Outcome,
-      train = training_mod2 %>% select(-Outcome),
-      reference_class = "Grant",
-      method = "permute",
-      pred_wrapper = pred_wrapper)
-  
-permute_imp_plot
 ```
 
-
+```{r}
+pred <- predict(mod_rf_grant, newdata = testingGrant_mod)
+confusionMatrix(table(pred, testingGrant_mod$GrantLevel))
+```
 
 ### My Albatross: Mapping 
 
@@ -884,10 +847,13 @@ ACS_pov_map <- get_acs(geography = "county", variables = "DP03_0119PE",
 #Joining my ACS poverty with geography data to my PDM map data; I only want to keep 
 #rows that match on GEOID so I am using an inner_join
 
-PDM_map_dat <- inner_join(PDM_map_dat, ACS_pov_map, by = "GEOID")
+PDM_map_dat2 <- inner_join(ACS_pov_map, PDM_map_dat, by = "GEOID")
 
+#The issue arose because I was joining the ACS_pov_map object to the PDM_map_dat object, which 
+#did not contain geometric data. I needed to join them the other way around in order to produce
+#a df with sf features instead of just a tibble (with a geometry column... but no overall geometric
+#properties, evidently. H/t to Nathan for figuring THAT one out.)
 ```
-
 
 ```{r}
 #Calling shapefile from rnaturalearth package
@@ -907,14 +873,18 @@ us.proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0
 ```
 
 ```{r}
+# Create a state FIPS field & Aggregate the county layer by state 
+states <- mutate(ACS_pov_map, STFIPS = stringr::str_sub(GEOID, 1, 2)) %>% 
+  tmaptools::aggregate_map(by = "STFIPS")
+
 #Making the map with fixed width bins 
 
-poverty_map <- tm_shape(PDM_map_dat,
+poverty_map <- tm_shape(PDM_map_dat2,
                      projection = us.proj) +
   tm_fill("PovertyRate",
           palette = "PuBuGn",
           title = "Poverty Rate") + 
-  tm_shape(states_shp,
+  tm_shape(states,
            projection = us.proj) +
   tm_borders() +
   tm_layout(main.title = "Poverty Rate in Counties Receiving Pre-Disaster Mitigation Grants",
@@ -930,11 +900,258 @@ poverty_map <- tm_shape(PDM_map_dat,
 
 ```
 
-
 ```{r}
 #Saving the map
 
 tmap_save(poverty_map, "poverty_rate_PDM_counties_map.png", width = 1920, height = 1080, asp = 0)
 
 ```
+
+```{r}
+#Given the results of my models, I want to make a few more maps: One showing the concentration of Asian households in PDM grant counties vs. the US as a whole (since that was such a strong determinant in my rf model); one showing the concentration of Black households in PDM grant counties vs. the US as a whole (since there was a negative relationship in my rf model); and one showing the disaster count by counties receiving PDM grants, since that was a strong determinant for my second rf model showing recipients of large grants.
+
+#Building my Asian maps
+
+ACS_asian_map <- get_acs(geography = "county", variables = "DP05_0044PE", output = "tidy", geometry = TRUE, shift_geo = TRUE, key = "4b641703e32072356c733cd79067e522979bc17d") %>% 
+    select(GEOID, PCT_ASIAN = estimate, geometry)
+
+#Joining my Asian ACS data to my PDM map data; I only want to keep 
+#rows that match on GEOID so I am using an inner_join
+
+ACS_asian_map2 <- inner_join(ACS_asian_map, PDM_map_dat, by = "GEOID")
+```
+
+```{r}
+#Creating my map of % Asian individuals by grant-receiving county
+#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
+
+#Making the map with jenks  bins 
+
+Grant_asian_map <- tm_shape(ACS_asian_map2,
+                     projection = us.proj) +
+  tm_fill("PCT_ASIAN",
+          palette = "PuBuGn",
+          title = "Percent Asian Population",
+          style = "jenks") + 
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Percent of population identifying as Asian in PDM-grant counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(Grant_asian_map, "pct_asian_PDM_counties.png", width = 1920, height = 1080, asp = 0)
+```
+
+```{r}
+#Creating my map of % Asian individuals in all counties
+#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
+
+#Making the map with jenks bins 
+
+All_asian_map <- tm_shape(ACS_asian_map,
+                     projection = us.proj) +
+  tm_fill("PCT_ASIAN",
+          palette = "PuBuGn",
+          title = "Percent Asian Population",
+          style = "jenks") + #want to use jenks breaks so data self-sorts
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Percent of population identifying as Asian in all US counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(All_asian_map, "pct_asian_all_counties.png", width = 1920, height = 1080, asp = 0)
+
+```
+
+```{r}
+#Mapping PDM counties by disaster count 
+
+PDM_map_disasters <- training %>% 
+  filter(., Outcome == "Grant") %>% 
+  select(GEOID, State, DisasterCount) %>% 
+  filter(!is.na(State)) %>% #removing instances where a state isn't specified
+  filter(!str_detect(State, "AS")) %>%  #removing territories that don't appear in the rNaturalEarth US map
+  filter(!str_detect(State, "GU")) %>% 
+  filter(!str_detect(State, "TM")) %>% 
+  filter(!str_detect(State, "MP")) %>% 
+  filter(!str_detect(State, "VI")) %>% 
+  filter(!str_detect(State, "PR")) %>% 
+  distinct() #removing duplicate counties (have received more than 1 grant)
+
+```
+
+```{r}
+#Joining to a previous Census pull to get geometry data by GEOID 
+PDM_map_disasters2 <- inner_join(ACS_asian_map, PDM_map_disasters, by = "GEOID") %>% 
+  select(GEOID, DisasterCount, geometry)
+
+```
+
+```{r}
+#Creating my map of disaster declarations in PDM counties 
+
+#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
+
+#Making the map with jenks bins 
+
+Disaster_count_map <- tm_shape(PDM_map_disasters2,
+                     projection = us.proj) +
+  tm_fill("DisasterCount",
+          palette = "PuBuGn",
+          title = "Number of Disasters",
+          style = "jenks") + #I want jenks breaks so the data self-sorts 
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Number of Disasters since 2000 in PDM-grant counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(Disaster_count_map, "disaster_count_PDM_counties.png", width = 1920, height = 1080, asp = 0)
+```
+
+
+```{r}
+#Mapping all counties by disaster declarations
+
+All_map_disasters <- training %>% 
+  select(GEOID, State, DisasterCount) %>% 
+  filter(!is.na(State)) %>% #removing instances where a state isn't specified
+  filter(!str_detect(State, "AS")) %>%  #removing territories that don't appear in the rNaturalEarth US map
+  filter(!str_detect(State, "GU")) %>% 
+  filter(!str_detect(State, "TM")) %>% 
+  filter(!str_detect(State, "MP")) %>% 
+  filter(!str_detect(State, "VI")) %>% 
+  filter(!str_detect(State, "PR")) %>% 
+  distinct() #removing duplicate counties (have received more than 1 grant)
+
+#Joining to a previous Census pull to get geometry data by GEOID 
+All_map_disasters2 <- inner_join(ACS_asian_map, All_map_disasters, by = "GEOID") %>% 
+  select(GEOID, DisasterCount, geometry)
+
+#Creating my map of disaster declarations in all counties 
+
+#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
+
+#Making the map with jenks bins 
+
+All_disaster_count_map <- tm_shape(All_map_disasters2,
+                     projection = us.proj) +
+  tm_fill("DisasterCount",
+          palette = "PuBuGn",
+          title = "Number of Disasters",
+          style = "jenks") + #I want jenks breaks so the data self-sorts 
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Number of Disasters since 2000 in all US counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(All_disaster_count_map, "disaster_count_all_counties.png", width = 1920, height = 1080, asp = 0)
+
+```
+
+```{r}
+#Creating a map of % Black individuals in PDM-grant counties 
+
+ACS_black_map <- get_acs(geography = "county", variables = "DP05_0038PE", output = "tidy", geometry = TRUE, shift_geo = TRUE, key = "4b641703e32072356c733cd79067e522979bc17d") %>% 
+    select(GEOID, PCT_BLACK = estimate, geometry)
+
+#Joining my Black ACS data to my PDM map data; I only want to keep 
+#rows that match on GEOID so I am using an inner_join
+
+ACS_black_map2 <- inner_join(ACS_black_map, PDM_map_dat, by = "GEOID")
+
+#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
+
+#Making the map with jenks  bins 
+
+Grant_black_map <- tm_shape(ACS_black_map2,
+                     projection = us.proj) +
+  tm_fill("PCT_BLACK",
+          palette = "PuBuGn",
+          title = "Percent Black Population",
+          style = "jenks") + 
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Percent of population identifying as Black in PDM-grant counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(Grant_black_map, "pct_black_PDM_counties.png", width = 1920, height = 1080, asp = 0)
+
+#Creating my map of % Black individuals in all counties
+
+#Making the map with jenks bins 
+
+All_black_map <- tm_shape(ACS_black_map,
+                     projection = us.proj) +
+  tm_fill("PCT_BLACK",
+          palette = "PuBuGn",
+          title = "Percent Black Population",
+          style = "jenks") + #want to use jenks breaks so data self-sorts
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Percent of population identifying as Black in all US counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
+#Saving the map
+tmap_save(All_black_map, "pct_black_all_counties.png", width = 1920, height = 1080, asp = 0)
+
+```
+
 
