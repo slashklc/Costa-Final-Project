@@ -151,8 +151,7 @@ ACS_pov_dat <- get_acs(geography = "county", variables = "DP03_0119PE", key = "4
 #adjusting my ACS poverty data 
 ACS_pov_dat <- ACS_pov_dat %>% 
 
-  select(GEOID, NAME, POVERTY_RATE = estimate) #dropping columns for Census variable name and margin of error, 
-                                              #renaming 'estimate' column to reflect more useful variable name
+select(GEOID, NAME, POVERTY_RATE = estimate) #dropping columns for Census variable name and margin of error, renaming 'estimate' column to reflect more useful variable name
 
 #Using the tidycensus package to pull ACS 5 year estimates for racial demographics as county percentages
 #I'm getting an error when I try to pull more than one variable, so will pull them individually
@@ -165,8 +164,7 @@ ACS_asian_dat <- get_acs(geography = "county", variables = "DP05_0044PE", key = 
 ACS_twoplus_dat <- get_acs(geography = "county", variables = "DP05_0058PE", key = "4b641703e32072356c733cd79067e522979bc17d")
 ACS_hispanic_dat <- get_acs(geography = "county", variables = "DP05_0071PE", key = "4b641703e32072356c733cd79067e522979bc17d")
 
-#Adjusting my ACS racial data; in all cases, dropping columns for Census variable name and margin of error, 
-#renaming 'estimate' column to reflect more useful variable name
+#Adjusting my ACS racial data; in all cases, dropping columns for Census variable name and margin of error, renaming 'estimate' column to reflect more useful variable name
 ACS_white_dat <- ACS_white_dat %>% 
   select(GEOID, NAME, PCT_WHITE = estimate)
 ACS_black_dat <- ACS_black_dat %>% 
@@ -430,6 +428,12 @@ control_conditions <-
 ```
 
 ```{r}
+require(stargazer) #requiring stargazer to render a nice table for my report
+stargazer(training_mod, out = "summarystats.html") #Outputting as HTML for ease of integrating into my RMD
+```
+
+
+```{r}
 #Running a logistic regression model
 #I don't want to use GEOID as a predictor, but also don't want to disassociate the GEOID from the data, 
 #so selecting the other predictors only
@@ -482,7 +486,7 @@ mod_knn2
 
 ```{r}
 plot(mod_knn2)
-#20 folds is my best performing model 
+#20 neighbors is my best performing model 
 ```
 
 ```{r}
