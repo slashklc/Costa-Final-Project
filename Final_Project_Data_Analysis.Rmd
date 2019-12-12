@@ -899,7 +899,7 @@ us.proj <- "+proj=aea +lat_1=29.5 +lat_2=45.5 +lat_0=37.5 +lon_0=-96 +x_0=0 +y_0
 states <- mutate(ACS_pov_map, STFIPS = stringr::str_sub(GEOID, 1, 2)) %>% 
   tmaptools::aggregate_map(by = "STFIPS")
 
-#Making the map with fixed width bins 
+#Making the map for PDM counties with fixed width bins 
 
 poverty_map <- tm_shape(PDM_map_dat2,
                      projection = us.proj) +
@@ -920,6 +920,26 @@ poverty_map <- tm_shape(PDM_map_dat2,
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
+#Making the map for all counties with fixed width bins, too
+
+poverty_map_all <- tm_shape(ACS_pov_map,
+                     projection = us.proj) +
+  tm_fill("PovertyRate",
+          palette = "PuBuGn",
+          title = "Poverty Rate") + 
+  tm_shape(states,
+           projection = us.proj) +
+  tm_borders() +
+  tm_layout(main.title = "Poverty Rate in All U.S. Counties",
+            legend.title.size = .8,
+            legend.text.size = 0.5,
+            legend.position = c("LEFT", "BOTTOM"),
+            main.title.size = .8,
+            frame = F) +
+  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program",
+             position = c("RIGHT", "BOTTOM"),
+             size = .3)
+
 ```
 
 ```{r}
@@ -930,7 +950,7 @@ tmap_save(poverty_map, "poverty_rate_PDM_counties_map.png", width = 1920, height
 ```
 
 ```{r}
-#Given the results of my models, I want to make a few more maps: One showing the concentration of Asian households in PDM grant counties vs. the US as a whole (since that was such a strong determinant in my rf model); one showing the concentration of Black households in PDM grant counties vs. the US as a whole (since there was a negative relationship in my rf model); and one showing the disaster count by counties receiving PDM grants, since that was a strong determinant for my second rf model showing recipients of large grants.
+#Given the results of my models, I want to make a few more maps: One showing the concentration of Asian households in PDM grant counties vs. the US as a whole (since that was such a strong determinant in my rf model); and maps showing the disaster count by counties receiving PDM grants vs. nationwide. 
 
 #Building my Asian maps
 
@@ -995,7 +1015,7 @@ All_asian_map <- tm_shape(ACS_asian_map,
             main.title.size = .8,
             frame = F) +
   tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000 | Jenks breaks",
+            Jenks breaks",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
@@ -1050,7 +1070,7 @@ Disaster_count_map <- tm_shape(PDM_map_disasters2,
             legend.position = c("LEFT", "BOTTOM"),
             main.title.size = .8,
             frame = F) +
-  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
+  tm_credits("Source: Federal Emergency Management Agency Disaster Declarations | 
              Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
@@ -1099,8 +1119,7 @@ All_disaster_count_map <- tm_shape(All_map_disasters2,
             legend.position = c("LEFT", "BOTTOM"),
             main.title.size = .8,
             frame = F) +
-  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+  tm_credits("Source: Federal Emergency Management Agency Disaster Declarations",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
@@ -1108,72 +1127,4 @@ All_disaster_count_map <- tm_shape(All_map_disasters2,
 tmap_save(All_disaster_count_map, "disaster_count_all_counties.png", width = 1920, height = 1080, asp = 0)
 
 ```
-
-```{r}
-#Creating a map of % Black individuals in PDM-grant counties 
-
-ACS_black_map <- get_acs(geography = "county", variables = "DP05_0038PE", output = "tidy", geometry = TRUE, shift_geo = TRUE, key = "4b641703e32072356c733cd79067e522979bc17d") %>% 
-    select(GEOID, PCT_BLACK = estimate, geometry)
-
-#Joining my Black ACS data to my PDM map data; I only want to keep 
-#rows that match on GEOID so I am using an inner_join
-
-ACS_black_map2 <- inner_join(ACS_black_map, PDM_map_dat, by = "GEOID")
-
-#I can still use the state FIPS and aggregated county work-around to get outlines for HI and AK from above
-
-#Making the map with jenks  bins 
-
-Grant_black_map <- tm_shape(ACS_black_map2,
-                     projection = us.proj) +
-  tm_fill("PCT_BLACK",
-          palette = "PuBuGn",
-          title = "Percent Black",
-          style = "jenks") + 
-  tm_shape(states,
-           projection = us.proj) +
-  tm_borders() +
-  tm_layout(main.title = "Percent of population identifying as Black in PDM-grant counties",
-            legend.title.size = .8,
-            legend.text.size = 0.5,
-            legend.position = c("LEFT", "BOTTOM"),
-            main.title.size = .8,
-            frame = F) +
-  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
-             position = c("RIGHT", "BOTTOM"),
-             size = .3)
-
-#Saving the map
-tmap_save(Grant_black_map, "pct_black_PDM_counties.png", width = 1920, height = 1080, asp = 0)
-
-#Creating my map of % Black individuals in all counties
-
-#Making the map with jenks bins 
-
-All_black_map <- tm_shape(ACS_black_map,
-                     projection = us.proj) +
-  tm_fill("PCT_BLACK",
-          palette = "PuBuGn",
-          title = "Percent Black",
-          style = "jenks") + #want to use jenks breaks so data self-sorts
-  tm_shape(states,
-           projection = us.proj) +
-  tm_borders() +
-  tm_layout(main.title = "Percent of population identifying as Black in all US counties",
-            legend.title.size = .8,
-            legend.text.size = 0.5,
-            legend.position = c("LEFT", "BOTTOM"),
-            main.title.size = .8,
-            frame = F) +
-  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
-             position = c("RIGHT", "BOTTOM"),
-             size = .3)
-
-#Saving the map
-tmap_save(All_black_map, "pct_black_all_counties.png", width = 1920, height = 1080, asp = 0)
-
-```
-
 
