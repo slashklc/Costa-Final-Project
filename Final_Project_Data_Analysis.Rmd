@@ -691,7 +691,7 @@ confusionMatrix(table(pred, testing_mod2$Outcome))
 
 dat_all_split <- dat_all %>% 
   group_by(GEOID, Outcome, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC) %>% 
-  summarise_at(vars(projectAmount), funs(sum)) %>% #Summarizing the ProjectAmount variable for each county
+  summarise_at(vars(ProjectAmount), funs(sum)) %>% #Summarizing the ProjectAmount variable for each county
   ungroup()
 ```
 
@@ -699,7 +699,7 @@ dat_all_split <- dat_all %>%
 #I have a different outcome this time... I want to know whether a county is going to sort into the high grant category (>$100,000) or the low grant category (<$100,000). So I need to mutate a new outcome column. 
 
 dat_all_split <- dat_all_split %>% 
-  mutate(grant_level = ifelse(projectAmount > 75000, "high", "low"))
+  mutate(grant_level = ifelse(ProjectAmount > 75000, "high", "low"))
 
 ```
 
@@ -715,7 +715,7 @@ dat_all_split <- dat_all_split %>%
 #Reordering and renaming my columns
 
 dat_all_split <- dat_all_split %>% 
-  select(GEOID, GrantLevel = grant_level, projectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC)
+  select(GEOID, GrantLevel = grant_level, ProjectAmount, DisasterCount, POVERTY_RATE, PCT_WHITE, PCT_BLACK, PCT_NATIVE, PCT_ASIAN, PCT_TWO_OR_MORE, PCT_HISPANIC)
 
 ```
 
