@@ -649,7 +649,9 @@ permute_imp_plot <-
   vip(mod_rf$finalModel,
       data = training_mod2,
       target = training_mod2$Outcome,
-      train = training_mod2 %>% select(-Outcome),
+      train = training_mod2 %>% select(-Outcome, -GEOID), 
+      #I need to not include GEOID, as well as Outcome, because it is perfectly predictive
+      #(each GEOID can only belong to one county/county-equivalent, by definition)
       reference_class = "Grant",
       method = "permute",
       pred_wrapper = pred_wrapper,
