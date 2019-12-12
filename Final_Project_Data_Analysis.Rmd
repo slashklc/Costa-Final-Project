@@ -936,7 +936,7 @@ poverty_map_all <- tm_shape(ACS_pov_map,
             legend.position = c("LEFT", "BOTTOM"),
             main.title.size = .8,
             frame = F) +
-  tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program",
+  tm_credits("Source: 2013-2017 5-year American Community Survey",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
@@ -946,6 +946,7 @@ poverty_map_all <- tm_shape(ACS_pov_map,
 #Saving the map
 
 tmap_save(poverty_map, "poverty_rate_PDM_counties_map.png", width = 1920, height = 1080, asp = 0)
+tmap_save(poverty_map_all, "poverty_rate_all_counties.png", width = 1920, height = 1080, asp = 0)
 
 ```
 
