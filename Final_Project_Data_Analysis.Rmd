@@ -652,10 +652,21 @@ permute_imp_plot <-
       train = training_mod2 %>% select(-Outcome),
       reference_class = "Grant",
       method = "permute",
-      pred_wrapper = pred_wrapper)
+      pred_wrapper = pred_wrapper,
+      fill = "steelblue") +
+  theme_light()
+  
   
 permute_imp_plot
 ```
+
+```{r}
+#Saving my variable importance plot
+
+ggsave("variable_importance.png", width = 7, height = 5)
+
+```
+
 
 ### Testing data on RF model 
 
@@ -816,6 +827,11 @@ pred <- predict(mod_rf_grant, newdata = testingGrant_mod)
 confusionMatrix(table(pred, testingGrant_mod$GrantLevel))
 ```
 
+```{r}
+#The ROC for this second round of machine learning is pretty pathetic, so I'm not going to use these results in my report. 
+```
+
+
 ### My Albatross: Mapping 
 
 ```{r}
@@ -935,7 +951,7 @@ Grant_asian_map <- tm_shape(ACS_asian_map2,
                      projection = us.proj) +
   tm_fill("PCT_ASIAN",
           palette = "PuBuGn",
-          title = "Percent Asian Population",
+          title = "Percent Asian",
           style = "jenks") + 
   tm_shape(states,
            projection = us.proj) +
@@ -947,7 +963,7 @@ Grant_asian_map <- tm_shape(ACS_asian_map2,
             main.title.size = .8,
             frame = F) +
   tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000 | Jenks breaks",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
@@ -965,7 +981,7 @@ All_asian_map <- tm_shape(ACS_asian_map,
                      projection = us.proj) +
   tm_fill("PCT_ASIAN",
           palette = "PuBuGn",
-          title = "Percent Asian Population",
+          title = "Percent Asian",
           style = "jenks") + #want to use jenks breaks so data self-sorts
   tm_shape(states,
            projection = us.proj) +
@@ -977,7 +993,7 @@ All_asian_map <- tm_shape(ACS_asian_map,
             main.title.size = .8,
             frame = F) +
   tm_credits("Source: 2013-2017 5-year American Community Survey and FEMA Hazard Mitigation Grant Program | 
-             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000",
+             Counties receiving at least one Pre-Disaster Mitigation Grant since 2000 | Jenks breaks",
              position = c("RIGHT", "BOTTOM"),
              size = .3)
 
@@ -1110,7 +1126,7 @@ Grant_black_map <- tm_shape(ACS_black_map2,
                      projection = us.proj) +
   tm_fill("PCT_BLACK",
           palette = "PuBuGn",
-          title = "Percent Black Population",
+          title = "Percent Black",
           style = "jenks") + 
   tm_shape(states,
            projection = us.proj) +
@@ -1137,7 +1153,7 @@ All_black_map <- tm_shape(ACS_black_map,
                      projection = us.proj) +
   tm_fill("PCT_BLACK",
           palette = "PuBuGn",
-          title = "Percent Black Population",
+          title = "Percent Black",
           style = "jenks") + #want to use jenks breaks so data self-sorts
   tm_shape(states,
            projection = us.proj) +
