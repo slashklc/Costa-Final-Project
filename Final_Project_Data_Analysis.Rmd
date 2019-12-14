@@ -210,6 +210,12 @@ dat_all <- dat_all %>%
 
 ```
 
+```{r}
+#Saving my full data set for submission purposes 
+write_csv(dat_all, "dat_all.csv")
+```
+
+
 ### Training and Test Data Set 
 
 ```{r}
@@ -535,7 +541,7 @@ mod_cart2
 ```
 
 ```{r}
-rattle::fancyRpartPlot(mod_cart2$finalModel)
+CART_deep_tree <- rattle::fancyRpartPlot(mod_cart2$finalModel)
 ```
 
 ```{r}
@@ -629,8 +635,10 @@ mod_list <- list(logit = mod_logit,
 
 #Generating a plot to compare output
 
-dotplot(resamples(mod_list))
+mod_outcomes <- dotplot(resamples(mod_list))
+mod_outcomes
 ```
+
 
 ### Examining predictive power of variables in RF model
 
@@ -909,7 +917,7 @@ poverty_map <- tm_shape(PDM_map_dat2,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Poverty Rate in Counties Receiving Pre-Disaster Mitigation Grants",
+  tm_layout(main.title = "Fig. 5: Poverty Rate in PDM-Grant Counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
@@ -930,7 +938,7 @@ poverty_map_all <- tm_shape(ACS_pov_map,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Poverty Rate in All U.S. Counties",
+  tm_layout(main.title = "Fig. 6: Poverty Rate in All U.S. Counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
@@ -979,7 +987,7 @@ Grant_asian_map <- tm_shape(ACS_asian_map2,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Percent of population identifying as Asian in PDM-grant counties",
+  tm_layout(main.title = "Fig. 3: Percent of population identifying as Asian in PDM-grant counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
@@ -1009,7 +1017,7 @@ All_asian_map <- tm_shape(ACS_asian_map,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Percent of population identifying as Asian in all US counties",
+  tm_layout(main.title = "Fig. 4: Percent of population identifying as Asian in all US counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
@@ -1065,7 +1073,7 @@ Disaster_count_map <- tm_shape(PDM_map_disasters2,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Number of Disasters since 2000 in PDM-grant counties",
+  tm_layout(main.title = "Fig 7: Number of Disasters since 2000 in PDM-grant counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
@@ -1114,7 +1122,7 @@ All_disaster_count_map <- tm_shape(All_map_disasters2,
   tm_shape(states,
            projection = us.proj) +
   tm_borders() +
-  tm_layout(main.title = "Number of Disasters since 2000 in all US counties",
+  tm_layout(main.title = "Fig. 8: Number of Disasters since 2000 in all US counties",
             legend.title.size = .8,
             legend.text.size = 0.5,
             legend.position = c("LEFT", "BOTTOM"),
