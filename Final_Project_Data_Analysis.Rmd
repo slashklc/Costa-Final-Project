@@ -912,7 +912,7 @@ states <- mutate(ACS_pov_map, STFIPS = stringr::str_sub(GEOID, 1, 2)) %>%
 poverty_map <- tm_shape(PDM_map_dat2,
                      projection = us.proj) +
   tm_fill("PovertyRate",
-          palette = "PuBuGn",
+          palette = "Greens",
           title = "Poverty Rate") + 
   tm_shape(states,
            projection = us.proj) +
@@ -933,7 +933,7 @@ poverty_map <- tm_shape(PDM_map_dat2,
 poverty_map_all <- tm_shape(ACS_pov_map,
                      projection = us.proj) +
   tm_fill("PovertyRate",
-          palette = "PuBuGn",
+          palette = "Greens",
           title = "Poverty Rate") + 
   tm_shape(states,
            projection = us.proj) +
@@ -1067,7 +1067,7 @@ PDM_map_disasters2 <- inner_join(ACS_asian_map, PDM_map_disasters, by = "GEOID")
 Disaster_count_map <- tm_shape(PDM_map_disasters2,
                      projection = us.proj) +
   tm_fill("DisasterCount",
-          palette = "PuBuGn",
+          palette = "Reds",
           title = "Number of Disasters",
           style = "jenks") + #I want jenks breaks so the data self-sorts 
   tm_shape(states,
@@ -1116,7 +1116,7 @@ All_map_disasters2 <- inner_join(ACS_asian_map, All_map_disasters, by = "GEOID")
 All_disaster_count_map <- tm_shape(All_map_disasters2,
                      projection = us.proj) +
   tm_fill("DisasterCount",
-          palette = "PuBuGn",
+          palette = "Reds",
           title = "Number of Disasters",
           style = "jenks") + #I want jenks breaks so the data self-sorts 
   tm_shape(states,
